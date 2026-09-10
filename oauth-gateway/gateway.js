@@ -7,7 +7,6 @@
  */
 import express from 'express';
 import http from 'http';
-import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -20,9 +19,20 @@ import {
   requireBearerAuth,
   getOAuthProtectedResourceMetadataUrl,
   authenticateHandler,
+  SUPPORTED_TOKEN_ENDPOINT_AUTH_METHODS,
 } from 'mcp-oauth-server';
+import { createRequire } from 'module';
+import { pathToFileURL } from 'url';
+import { privateKeyJwtMiddleware } from './private-key-jwt.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// InvalidClientError is not re-exported from mcp-oauth-server's package root.
+const _require = createRequire(import.meta.url);
+const _mcpEntry = _require.resolve('mcp-oauth-server');
+const { InvalidClientError } = await import(
+  pathToFileURL(path.join(path.dirname(_mcpEntry), 'errors.js')).href
+);
 const ROOT = path.resolve(__dirname, '..');
 const SECRETS = path.join(ROOT, 'secrets');
 
@@ -92,6 +102,58 @@ proxy.on('error', (err, req, res) => {
 
 // Trust Cloudflare / proxy headers for correct host
 app.set('trust proxy', true);
+
+// --- private_key_jwt support for ChatGPT CIMD clients -----------------------
+// mcp-oauth-server only allows CIMD auth method "none" and does not verify
+// client_assertion. Advertise + accept private_key_jwt; validate JWTs ourselves.
+if (!SUPPORTED_TOKEN_ENDPOINT_AUTH_METHODS.includes('private_key_jwt')) {
+  SUPPORTED_TOKEN_ENDPOINT_AUTH_METHODS.push('private_key_jwt');
+}
+
+/**
+ * Allow CIMD clients with token_endpoint_auth_method "none" OR "private_key_jwt".
+ * Keeps redirect_uri + grant_types checks from mcp-oauth-server.
+ */
+OAuthServer.prototype.validateClientIdMetadataDocument = function validateClientIdMetadataDocument(client) {
+  this.validateRedirectUris(client.redirect_uris, (uri) => {
+    throw new InvalidClientError(
+      `redirect_uri in client_id metadata document must use https, a loopback address, or a private-use URI scheme: ${uri}`
+    );
+  });
+
+  const method = client.token_endpoint_auth_method || 'none';
+  if (method !== 'none' && method !== 'private_key_jwt') {
+    throw new InvalidClientError(
+      `Unsupported token_endpoint_auth_method for client_id metadata document client: ${method}`
+    );
+  }
+  if (method === 'private_key_jwt') {
+    const hasJwksUri = typeof client.jwks_uri === 'string' && client.jwks_uri.startsWith('https://');
+    const hasJwks = client.jwks && Array.isArray(client.jwks.keys) && client.jwks.keys.length > 0;
+    if (!hasJwksUri && !hasJwks) {
+      throw new InvalidClientError(
+        'private_key_jwt CIMD client requires https jwks_uri or inline jwks'
+      );
+    }
+  }
+
+  const grantTypes = client.grant_types?.length ? client.grant_types : ['authorization_code'];
+  if (!grantTypes.some((grant) => this.grantTypes.includes(grant))) {
+    throw new InvalidClientError(
+      `No supported grant_types in client_id metadata document: ${grantTypes.join(', ')}`
+    );
+  }
+};
+
+// Verify client_assertion before library token/revoke client auth.
+app.use(
+  ['/token', '/revoke'],
+  express.urlencoded({ extended: false }),
+  privateKeyJwtMiddleware({
+    getClient: (clientId) => oauthServer.getClient(clientId),
+    publicBase: PUBLIC_BASE,
+  })
+);
 
 // OAuth AS + PRM metadata + /authorize /token /register /revoke
 app.use(
