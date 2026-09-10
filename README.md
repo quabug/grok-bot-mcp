@@ -21,7 +21,7 @@ What this MCP is for:
 Not a use case by itself: hosting a public unauthenticated filesystem/shell on the internet.
 
 <details>
-<summary>Real session: how ChatGPT used Grok Bot MCP to implement ShiningPie's Yarn extension</summary>
+<summary>Real session: ChatGPT acted as the coding agent.</summary>
 
 In a real session on September 10, 2026, **ChatGPT acted as the coding agent, while Grok Bot MCP provided access to a remote development environment.** The work covered ShiningPie's Yarn tooling and the companion ParadiseEngine tray integration. ChatGPT did not hand the implementation to a separate Grok agent and wait for it to solve the task.
 
