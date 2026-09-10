@@ -117,6 +117,55 @@ grok-bot-mcp/
 - Workspace tools are folder-scoped — treat the tunnel + password as highly sensitive
 - Never commit `secrets/`, live mailboxes, or tokens
 
+## Before you publish / known issues
+
+Worth fixing or documenting before calling this production-ready:
+
+1. **Tunnel URL rotates** — Cloudflare quick tunnels (`*.trycloudflare.com`) get a new host every `cloudflared` restart. Remote clients (ChatGPT) must update the connector URL, or you should move to a **named Cloudflare tunnel** / stable domain.
+2. **OAuth owner password** — Generated under `secrets/` (gitignored). Treat it like a root password for the MCP. Prefer rotating it and never pasting it into chat logs.
+3. **ChatGPT tool cache** — After adding tools (e.g. agent-bridge), **Disconnect → Reconnect** the connector (re-consent) or ChatGPT may keep an old tool list (~53 tools without `list_agents` / `message_agent` / `check_replies`).
+4. **Agent-bridge needs a parent** — MCP only queues mail. A Grok Bot agent must run a routine (or manual loop) to `SendToAgent` outbox items and `add-reply` inbox messages. Without that, ChatGPT’s `message_agent` appears to hang.
+5. **Default poll is slow** — The sample routine uses `@every 5m` (platform minimum). For snappy demos, the parent should also deliver outbox items immediately when woken.
+6. **`cloudflared` must exist on PATH** — Do not commit machine-specific symlinks under `runtime/bin/`. Install via package manager or let the start script locate a local binary.
+7. **Workspace scope** — Tools are limited to `GROK_BOT_WORKSPACE`. Point it at an intentional folder; do not use `--bypass` / full-disk mode for shared tunnels.
+8. **High privilege tools** — Shell + file write + `gh` mean a stolen OAuth session or password is serious. Keep the connector private; use OAuth (not No Auth) for any public URL.
+9. **Client differences** — ChatGPT remote = HTTPS + OAuth. Claude Desktop / Cursor often prefer **stdio** (`start-stdio.sh`). Test the transport you actually ship.
+10. **Repo hygiene** — Keep `secrets/`, mailboxes, `STATUS.txt`, and live PIDs out of git (see `.gitignore`).
+
+Nice-to-haves later: named tunnel, optional Bearer for non-ChatGPT HTTP clients, faster outbox notify webhook → Grok Bot, and a one-command `doctor` script.
+
+## Paste into Grok Bot (full setup)
+
+Copy everything in the block below into a Grok Bot chat to have it clone, install, secure-start, wire the agent-bridge routine, and tell you how to connect ChatGPT / Claude / Cursor.
+
+```text
+Set up Grok Bot MCP on this machine end-to-end.
+
+Repo: https://github.com/quabug/grok-bot-mcp (private; use gh as the logged-in user).
+
+Do this:
+1. Clone into a durable path if missing (prefer ~/grok-bot-mcp or /workspace/grok-bot-mcp). Set GROK_BOT_MCP_ROOT to that path.
+2. Create a workspace folder for tool scope (e.g. $GROK_BOT_MCP_ROOT/../chatgpt or /workspace/chatgpt). Export GROK_BOT_WORKSPACE to it.
+3. npm install at repo root; also npm install in oauth-gateway/ and runtime/ as needed.
+4. Ensure cloudflared is available (install or locate on PATH). Do not commit binaries/symlinks.
+5. Run: bash start-secure.sh
+6. Read secrets/PUBLIC_BASE_URL.txt and confirm secrets/OWNER_PASSWORD.txt exists (mode 600). Never commit secrets or paste the password into git.
+7. Create or update a Grok Bot routine named like "Grok Bot MCP agent-bridge" on @every 5m that:
+   - Lists pending agent-bridge/outbox items
+   - Delivers each with SendToAgent (preface: relayed from ChatGPT via Grok Bot MCP)
+   - Runs agent-bridge/bin/mark-sent.sh <id>
+   - On [agent] replies meant for the bridge, runs add-reply.sh so check_replies works
+   - Stays quiet when outbox is empty
+8. Tell me the public MCP URL (`…/mcp`), that Auth is OAuth, and the path to the owner password file (not the password itself).
+9. Give short connect steps for:
+   - ChatGPT Developer Mode connector (URL + OAuth; reconnect after tool changes)
+   - Claude Desktop / Cursor using examples/ + start-stdio.sh
+10. Smoke-check: unauthenticated public /mcp returns 401; local tools/list includes list_agents, message_agent, check_replies.
+
+If something is already running, reuse it and report PIDs/URLs instead of duplicating. Prefer start-secure.sh over any No-Auth public exposure.
+```
+
+
 ## License
 
 [MIT](LICENSE) © 2026 quabug

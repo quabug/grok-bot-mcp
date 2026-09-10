@@ -19,3 +19,8 @@ agent-bridge/agents.json
 # OS / editor
 .DS_Store
 *.swp
+
+# machine-local / live ops
+STATUS.txt
+runtime/bin/cloudflared
+agent-bridge/notify.log
