@@ -2,6 +2,14 @@
  * Agent-messaging bridge for Grok Bot MCP.
  * Mailbox under <repo>/agent-bridge/ (this directory).
  * Parent Grok Bot dispatches outbox via SendToAgent; replies → inbox/.
+ *
+ * Env:
+ *   GROK_BOT_AGENTS_DIR      — agents profile root (optional)
+ *   GROK_BOT_SELF_AGENT_ID    — this agent's UUID (optional)
+ *   GROK_BOT_MCP_ROOT         — repo root (used to resolve sibling agent-data)
+ *   AGENT_BRIDGE_WEBHOOK_URL — POST outbox notify JSON (optional)
+ *   AGENT_BRIDGE_NOTIFY_PORT — local notify HTTP (default 3861)
+ * Also reads first line of agent-bridge/webhook.url if env unset.
  */
 import fs from "fs/promises";
 import fsSync from "fs";
@@ -12,14 +20,27 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BRIDGE_ROOT = __dirname;
-const AGENTS_DIR = "/home/box/agent-data/agents";
-const SELF_ID = "bb94f793-40f2-418c-89d3-2c1579564da6";
+const MCP_ROOT = process.env.GROK_BOT_MCP_ROOT || path.join(BRIDGE_ROOT, "..");
+
+function resolveAgentsDir() {
+  if (process.env.GROK_BOT_AGENTS_DIR) return process.env.GROK_BOT_AGENTS_DIR;
+  const boxDefault = "/home/box/agent-data/agents";
+  if (fsSync.existsSync(boxDefault)) return boxDefault;
+  const sibling = path.resolve(MCP_ROOT, "../agent-data/agents");
+  if (fsSync.existsSync(sibling)) return sibling;
+  return "";
+}
+
+const AGENTS_DIR = resolveAgentsDir();
+/** Override with GROK_BOT_SELF_AGENT_ID; default is legacy box id (set env on other hosts). */
+const SELF_ID = process.env.GROK_BOT_SELF_AGENT_ID || "bb94f793-40f2-418c-89d3-2c1579564da6";
 const NOTIFY_PATH = path.join(BRIDGE_ROOT, "NOTIFY");
 const QUEUE_LOG = path.join(BRIDGE_ROOT, "notify.log");
 const AGENTS_JSON = path.join(BRIDGE_ROOT, "agents.json");
 const OUTBOX = path.join(BRIDGE_ROOT, "outbox");
 const INBOX = path.join(BRIDGE_ROOT, "inbox");
 const SENT = path.join(BRIDGE_ROOT, "sent");
+const WEBHOOK_FILE = path.join(BRIDGE_ROOT, "webhook.url");
 const NOTIFY_PORT = Number(process.env.AGENT_BRIDGE_NOTIFY_PORT || 3861);
 
 for (const d of [OUTBOX, INBOX, SENT]) {
@@ -30,8 +51,45 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function getWebhookUrl() {
+  const fromEnv = (process.env.AGENT_BRIDGE_WEBHOOK_URL || "").trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const line = fsSync.readFileSync(WEBHOOK_FILE, "utf8").split(/\r?\n/)[0].trim();
+    return line || "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Fire-and-forget POST to webhook. Never throws; ignores network errors.
+ * @returns {boolean} true if a webhook URL was configured (attempt started)
+ */
+function fireWebhookNotify(payload) {
+  const url = getWebhookUrl();
+  if (!url) return false;
+  try {
+    // Node 18+ global fetch; do not await — parent notify must not block tool return
+    const body = JSON.stringify(payload);
+    Promise.resolve(
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body,
+      })
+    ).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function refreshAgents() {
   const agents = [];
+  if (!AGENTS_DIR) {
+    return { agents: [], error: "AGENTS_DIR not configured (set GROK_BOT_AGENTS_DIR)" };
+  }
   let entries = [];
   try {
     entries = await fs.readdir(AGENTS_DIR, { withFileTypes: true });
@@ -58,7 +116,7 @@ async function refreshAgents() {
       title: profile.title || "",
       serverId: profile.serverId || null,
       harness: profile.harness || null,
-      self: id === SELF_ID,
+      self: SELF_ID ? id === SELF_ID : false,
     };
     agents.push(item);
   }
@@ -68,8 +126,8 @@ async function refreshAgents() {
     return String(a.name).localeCompare(String(b.name));
   });
 
-  await fs.writeFile(AGENTS_JSON, JSON.stringify({ refreshed_at: nowIso(), self_id: SELF_ID, agents }, null, 2) + "\n");
-  return { agents, refreshed_at: nowIso(), self_id: SELF_ID };
+  await fs.writeFile(AGENTS_JSON, JSON.stringify({ refreshed_at: nowIso(), self_id: SELF_ID || null, agents }, null, 2) + "\n");
+  return { agents, refreshed_at: nowIso(), self_id: SELF_ID || null };
 }
 
 function resolveAgent(agents, agentIdOrName) {
@@ -121,6 +179,7 @@ function ensureNotifyHttp() {
           outbox_ids: pending.map((f) => f.replace(/\.json$/, "")),
           notify: notify?.trim() || null,
           bridge: BRIDGE_ROOT,
+          webhook_configured: Boolean(getWebhookUrl()),
         }));
         return;
       }
@@ -148,13 +207,13 @@ export const agentBridgeTools = [
   {
     name: "list_agents",
     description:
-      "List other Grok Bot agents (and self) available for messaging. Refreshes from /home/box/agent-data/agents/*/profile.json. Returns id, name, description, serverId, and self flag.",
+      "List other Grok Bot agents (and self) available for messaging. Refreshes from agent profiles (GROK_BOT_AGENTS_DIR). Returns id, name, description, serverId, and self flag.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "message_agent",
     description:
-      "Queue a message to another Grok Bot agent via the mailbox bridge. Provide agent_id (UUID), serverId, or name, plus message text. Returns outbox id; parent agent dispatches with SendToAgent. Use check_replies later for responses.",
+      "Queue a message to another Grok Bot agent via the mailbox bridge. Provide agent_id (UUID), serverId, or name, plus message text. Returns outbox id; parent agent dispatches with SendToAgent. Optionally fires AGENT_BRIDGE_WEBHOOK_URL / webhook.url for faster notify. Use check_replies later for responses.",
     inputSchema: {
       type: "object",
       properties: {
@@ -186,7 +245,8 @@ export async function handleAgentBridgeTool(name, args = {}) {
   if (name === "list_agents") {
     const result = await refreshAgents();
     return {
-      self_id: SELF_ID,
+      self_id: SELF_ID || null,
+      agents_dir: AGENTS_DIR || null,
       count: result.agents.length,
       agents: result.agents.map((a) => ({
         id: a.id,
@@ -197,6 +257,7 @@ export async function handleAgentBridgeTool(name, args = {}) {
       })),
       mailbox: BRIDGE_ROOT,
       note: "Use message_agent to queue outbound; parent dispatches via SendToAgent. check_replies for inbox.",
+      ...(result.error ? { error: result.error } : {}),
     };
   }
 
@@ -213,7 +274,7 @@ export async function handleAgentBridgeTool(name, args = {}) {
         `Unknown agent: ${targetKey}. Use list_agents. Known: ${agents.map((a) => `${a.name}(${a.id.slice(0, 8)})`).join(", ")}`
       );
     }
-    if (target.id === SELF_ID) {
+    if (SELF_ID && target.id === SELF_ID) {
       throw new Error("Cannot message self; pick another agent from list_agents");
     }
 
@@ -226,11 +287,17 @@ export async function handleAgentBridgeTool(name, args = {}) {
       message,
       created_at: nowIso(),
       status: "pending",
-      from_agent_id: SELF_ID,
+      from_agent_id: SELF_ID || null,
     };
     const file = path.join(OUTBOX, `${id}.json`);
     await fs.writeFile(file, JSON.stringify(item, null, 2) + "\n");
     await touchNotify(id);
+    const webhookAttempted = fireWebhookNotify({
+      event: "outbox",
+      id,
+      to_agent_id: target.id,
+      to_name: target.name,
+    });
 
     return {
       ok: true,
@@ -239,7 +306,10 @@ export async function handleAgentBridgeTool(name, args = {}) {
       to_name: target.name,
       status: "pending",
       queued: true,
-      hint: "queued; use check_replies later",
+      webhook_notify_attempted: webhookAttempted,
+      hint: webhookAttempted
+        ? "queued; webhook notify attempted; use check_replies later"
+        : "queued; use check_replies later (no webhook configured)",
       path: file,
     };
   }

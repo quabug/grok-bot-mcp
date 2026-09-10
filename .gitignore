@@ -15,6 +15,8 @@ agent-bridge/inbox/
 agent-bridge/sent/
 agent-bridge/NOTIFY
 agent-bridge/agents.json
+agent-bridge/webhook.url
+agent-bridge/notify.log
 
 # OS / editor
 .DS_Store
@@ -22,5 +24,9 @@ agent-bridge/agents.json
 
 # machine-local / live ops
 STATUS.txt
+
+# downloaded / local binaries (never commit)
+bin/cloudflared
 runtime/bin/cloudflared
-agent-bridge/notify.log
+**/cloudflared-linux-*
+*.amd64

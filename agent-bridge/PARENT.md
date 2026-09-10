@@ -4,7 +4,8 @@ Mailbox root: `<repo>/agent-bridge/`
 
 ## When ChatGPT queues a message (`message_agent`)
 1. MCP writes `outbox/<uuid>.json` and touches `NOTIFY` (+ appends `notify.log`).
-2. Optional poll: `curl -s http://127.0.0.1:3861/notify`
+2. If `AGENT_BRIDGE_WEBHOOK_URL` or `webhook.url` is set, POSTs `{event:"outbox",id,to_agent_id,to_name}` (fire-and-forget).
+3. Optional poll: `curl -s http://127.0.0.1:3861/notify`
 
 ## Parent loop (Grok Bot with SendToAgent)
 1. `bash agent-bridge/bin/list-outbox.sh` — see pending items

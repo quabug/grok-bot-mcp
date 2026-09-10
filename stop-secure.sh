@@ -27,7 +27,9 @@ stop_pidfile "$PID_DIR/mcp-cli.pid"
 pkill -f "$ROOT_MCP/oauth-gateway/gateway.js" 2>/dev/null || true
 pkill -f "cloudflared tunnel --url http://127.0.0.1:${PORT_GW}" 2>/dev/null || true
 pkill -f "cloudflared tunnel --url http://localhost:${PORT_MCP}" 2>/dev/null || true
+pkill -f "cloudflared tunnel run --token" 2>/dev/null || true
 pkill -f "$ROOT_MCP/runtime/bin/cloudflared tunnel" 2>/dev/null || true
+pkill -f "$ROOT_MCP/bin/cloudflared tunnel" 2>/dev/null || true
 pkill -f "$ROOT_MCP/runtime/src/server.js" 2>/dev/null || true
 pkill -f "$ROOT_MCP/bin/stdio-bridge.js" 2>/dev/null || true
 pkill -f "$ROOT_MCP/node_modules/chatgpt-local-mcp/scripts/start.js" 2>/dev/null || true
