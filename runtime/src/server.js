@@ -2157,7 +2157,7 @@ async function handleMcpMessage(message, req) {
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: SERVER_ID, title: SERVER_NAME, version: VERSION },
         instructions:
-          `Grok Bot v${VERSION} — 53 tools for agentic coding and system control on Windows/Linux/macOS.\n\n`
+          `Grok Bot v${VERSION} — 56 tools for agentic coding and system control on Windows/Linux/macOS.\n\n`
           + `SCOPE: ${BYPASS_MODE ? "BYPASS MODE — full filesystem access." : `Folder-scoped — restricted to: ${ACCESS_ROOT}`}\n\n`
           + "CODING WORKFLOW:\n"
           + "• count_lines → read_file_lines: gauge a large file then read only the range you need.\n"
