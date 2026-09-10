@@ -2,8 +2,24 @@
 # Secure Grok Bot MCP: localhost MCP + OAuth gateway + cloudflared in front of gateway ONLY
 set -euo pipefail
 
-ROOT_MCP=/workspace/grok-bot-mcp
-ROOT_SCOPE=/workspace/chatgpt
+ROOT_MCP="${GROK_BOT_MCP_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+export GROK_BOT_MCP_ROOT="$ROOT_MCP"
+
+# Workspace scope: env → existing /workspace/chatgpt → $ROOT/../chatgpt → $ROOT/workspace
+if [[ -n "${GROK_BOT_WORKSPACE:-}" ]]; then
+  ROOT_SCOPE="$GROK_BOT_WORKSPACE"
+elif [[ -d /workspace/chatgpt ]]; then
+  ROOT_SCOPE=/workspace/chatgpt
+elif [[ -d "$ROOT_MCP/../chatgpt" ]]; then
+  ROOT_SCOPE="$(cd "$ROOT_MCP/../chatgpt" && pwd)"
+elif [[ -d "$ROOT_MCP/workspace" ]]; then
+  ROOT_SCOPE="$ROOT_MCP/workspace"
+else
+  ROOT_SCOPE="$ROOT_MCP/workspace"
+  mkdir -p "$ROOT_SCOPE"
+fi
+export GROK_BOT_WORKSPACE="$ROOT_SCOPE"
+
 PORT_MCP="${GROK_BOT_MCP_PORT:-3851}"
 PORT_GW="${GROK_BOT_GATEWAY_PORT:-3860}"
 HOME_DIR="$ROOT_MCP/runtime"
@@ -13,7 +29,7 @@ CF_BIN="$HOME_DIR/bin/cloudflared"
 PID_DIR="$ROOT_MCP/run"
 PUBLIC_FILE="$ROOT_MCP/secrets/PUBLIC_BASE_URL.txt"
 
-mkdir -p "$LOG_DIR" "$HOME_DIR/bin" "$PID_DIR" "$ROOT_MCP/secrets"
+mkdir -p "$LOG_DIR" "$HOME_DIR/bin" "$HOME_DIR/src" "$PID_DIR" "$ROOT_MCP/secrets"
 chmod 700 "$ROOT_MCP/secrets"
 
 # Locate cloudflared
@@ -42,6 +58,12 @@ pkill -f 'runtime/bin/cloudflared tunnel --url' 2>/dev/null || true
 pkill -f 'oauth-gateway/gateway.js' 2>/dev/null || true
 sleep 0.4
 
+# Keep branded runtime/src/server.js as source of truth; sync into package so
+# chatgpt-local-mcp's installRuntime copy preserves agent-bridge wiring.
+if [[ -f "$HOME_DIR/src/server.js" && -d "$PKG/src" ]]; then
+  cp -f "$HOME_DIR/src/server.js" "$PKG/src/server.js"
+fi
+
 # --- 1) Local MCP: 127.0.0.1 only, NO tunnel ---
 export CHATGPT_LOCAL_MCP_HOME="$HOME_DIR"
 export AI_PC_MCP_HOME="$HOME_DIR"
@@ -51,14 +73,22 @@ export AI_PC_MCP_ROOT="$ROOT_SCOPE"
 export AI_PC_MCP_DEFAULT_CWD="$ROOT_SCOPE"
 export AI_PC_MCP_BYPASS="false"
 export AI_PC_MCP_ALLOW_NO_AUTH="true"
+export ALLOW_NO_AUTH_LOCAL="${ALLOW_NO_AUTH_LOCAL:-1}"
 export AI_PC_MCP_NO_TUNNEL="true"
 export AI_PC_MCP_COMMAND_TIMEOUT_MS="${AI_PC_MCP_COMMAND_TIMEOUT_MS:-120000}"
+export GROK_BOT_MCP_ROOT="$ROOT_MCP"
 
-rm -f "$HOME_DIR/src/server.js"
+# Prefer direct branded server (avoids package overwrite of runtime/src).
 cd "$ROOT_SCOPE"
-nohup node "$PKG/bin/cli.js" --port "$PORT_MCP" --no-tunnel --log \
-  >"$LOG_DIR/mcp.out" 2>&1 &
-echo $! >"$PID_DIR/mcp-cli.pid"
+if [[ -f "$HOME_DIR/src/server.js" ]]; then
+  nohup env GROK_BOT_MCP_ROOT="$ROOT_MCP" node "$HOME_DIR/src/server.js" \
+    >"$LOG_DIR/mcp.out" 2>&1 &
+  echo $! >"$PID_DIR/mcp-cli.pid"
+else
+  nohup node "$PKG/bin/cli.js" --port "$PORT_MCP" --no-tunnel --log \
+    >"$LOG_DIR/mcp.out" 2>&1 &
+  echo $! >"$PID_DIR/mcp-cli.pid"
+fi
 echo "[secure] MCP launcher PID $(cat "$PID_DIR/mcp-cli.pid")"
 
 # Wait for MCP health
@@ -149,19 +179,26 @@ Grok Bot MCP — SECURE (OAuth 2.1)
 Started: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 Package: chatgpt-local-mcp@1.0.3 (local) behind oauth-gateway (mcp-oauth-server)
          branded serverInfo name=grok-bot title="Grok Bot"
+Root:    ${ROOT_MCP}
+Workspace scope: ${ROOT_SCOPE}
 
 Security model:
   - Local MCP bound to 127.0.0.1:${PORT_MCP} ONLY (no direct public exposure)
-  - OAuth 2.1 gateway on 127.0.0.1:${PORT_GW}: DCR + PKCE (S256) + CIMD (ChatGPT/OpenAI hosts)
+  - OAuth 2.1 gateway on 127.0.0.1:${PORT_GW}: DCR + PKCE (S256) + CIMD
   - Owner password (bcrypt) at consent page; hashed under secrets/ (mode 600)
   - /mcp requires valid OAuth Bearer with scope mcp:tools; unauthenticated → 401
   - cloudflared quick tunnel fronts the OAuth gateway ONLY (not raw MCP)
-  - Tools scoped to /workspace/chatgpt (no --bypass)
+  - Tools scoped to ${ROOT_SCOPE} (no --bypass)
+  - Loopback / stdio clients: AI_PC_MCP_ALLOW_NO_AUTH + ALLOW_NO_AUTH_LOCAL (no OAuth)
 
-Auth for ChatGPT connector: OAuth
+Auth for remote MCP clients (ChatGPT, HTTP agents): OAuth
   Name: Grok Bot
   URL:  ${PUBLIC_URL}/mcp
   Auth: OAuth
+
+Stdio local clients (Claude Desktop, Cursor):
+  bash ${ROOT_MCP}/start-stdio.sh
+  (see examples/claude_desktop_config.json and examples/cursor-mcp.json)
 
 Public base: ${PUBLIC_URL}/
 Local MCP:   http://127.0.0.1:${PORT_MCP}/mcp
@@ -171,15 +208,15 @@ Owner password hash: $ROOT_MCP/secrets/owner_password.bcrypt
 Public URL file: $PUBLIC_FILE
 
 PIDs:
-  ${CLI_PID}  mcp cli.js (--no-tunnel)
-  ${MCP_SERVER_PID:-?}  server.js (MCP HTTP 127.0.0.1:${PORT_MCP})
+  ${CLI_PID}  MCP server (127.0.0.1:${PORT_MCP})
+  ${MCP_SERVER_PID:-?}  listener pid
   ${GW_PID}  oauth-gateway/gateway.js (127.0.0.1:${PORT_GW})
   ${CF_PID}  cloudflared -> http://127.0.0.1:${PORT_GW}
 
 Restart:
   bash $ROOT_MCP/stop-secure.sh
   bash $ROOT_MCP/start-secure.sh
-  # NOTE: trycloudflare URL changes each restart — update ChatGPT connector URL.
+  # NOTE: trycloudflare URL changes each restart — update remote connectors.
 
 Do NOT use start.sh (unauthenticated public tunnel).
 STATUS

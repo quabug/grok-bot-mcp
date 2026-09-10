@@ -1,6 +1,6 @@
 # Agent-bridge — parent dispatch instructions
 
-Mailbox root: `/workspace/grok-bot-mcp/agent-bridge/`
+Mailbox root: `<repo>/agent-bridge/`
 
 ## When ChatGPT queues a message (`message_agent`)
 1. MCP writes `outbox/<uuid>.json` and touches `NOTIFY` (+ appends `notify.log`).

@@ -1,15 +1,31 @@
 {
   "name": "grok-bot-mcp",
   "version": "1.0.0",
-  "description": "Grok Bot MCP server with OAuth gateway and agent-bridge for ChatGPT",
-  "main": "index.js",
+  "description": "Portable Grok Bot MCP server — Streamable HTTP + OAuth for remote clients, stdio bridge for Claude/Cursor, agent-bridge mailbox",
+  "type": "module",
+  "main": "runtime/src/server.js",
+  "bin": {
+    "grok-bot-mcp-stdio": "bin/stdio-bridge.js"
+  },
   "scripts": {
+    "start:secure": "bash start-secure.sh",
+    "start:stdio": "bash start-stdio.sh",
+    "stop:secure": "bash stop-secure.sh",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "grok",
+    "chatgpt",
+    "claude",
+    "cursor",
+    "oauth"
+  ],
   "author": "quabug",
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "chatgpt-local-mcp": "^1.0.3"
   }
 }

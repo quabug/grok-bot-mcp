@@ -1,6 +1,6 @@
 /**
  * Agent-messaging bridge for Grok Bot MCP.
- * Mailbox under /workspace/grok-bot-mcp/agent-bridge/
+ * Mailbox under <repo>/agent-bridge/ (this directory).
  * Parent Grok Bot dispatches outbox via SendToAgent; replies → inbox/.
  */
 import fs from "fs/promises";

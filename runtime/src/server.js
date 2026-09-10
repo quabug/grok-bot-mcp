@@ -16,13 +16,44 @@ import net from "net";
 import crypto from "crypto";
 import { spawn, execFile } from "child_process";
 import { promisify } from "util";
-import { fileURLToPath } from "url";
-
-import { agentBridgeTools, handleAgentBridgeTool } from "/workspace/grok-bot-mcp/agent-bridge/mcp-tools.js";
+import { fileURLToPath, pathToFileURL } from "url";
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function resolveGrokBotMcpRoot() {
+  if (process.env.GROK_BOT_MCP_ROOT) {
+    return path.resolve(process.env.GROK_BOT_MCP_ROOT);
+  }
+  // Prefer directory containing package.json / start-secure.sh (repo root).
+  // server.js lives at <root>/runtime/src/server.js when using the branded runtime.
+  const candidates = [
+    path.resolve(__dirname, "../.."),
+    path.resolve(__dirname, "../../.."),
+    process.cwd(),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (
+        fsSync.existsSync(path.join(candidate, "package.json")) &&
+        (fsSync.existsSync(path.join(candidate, "start-secure.sh")) ||
+          fsSync.existsSync(path.join(candidate, "agent-bridge", "mcp-tools.js")))
+      ) {
+        return candidate;
+      }
+    } catch {
+      // keep looking
+    }
+  }
+  return path.resolve(__dirname, "../..");
+}
+
+const GROK_BOT_MCP_ROOT = resolveGrokBotMcpRoot();
+const agentBridgeModule = path.join(GROK_BOT_MCP_ROOT, "agent-bridge", "mcp-tools.js");
+const { agentBridgeTools, handleAgentBridgeTool } = await import(
+  pathToFileURL(agentBridgeModule).href
+);
 
 function loadEnvFile(filePath) {
   if (!filePath || !fsSync.existsSync(filePath)) return;

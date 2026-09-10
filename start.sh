@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DEPRECATED: unauthenticated public tunnel. Use start-secure.sh instead.
-echo "ERROR: start.sh is disabled (would expose MCP with No Auth)." >&2
-echo "Use: bash /workspace/grok-bot-mcp/start-secure.sh" >&2
+echo "Unauthenticated public start is disabled." >&2
+echo "Use: bash start-secure.sh   # HTTPS + OAuth for remote clients" >&2
+echo " Or: bash start-stdio.sh    # stdio bridge for Claude/Cursor (loopback)" >&2
 exit 1

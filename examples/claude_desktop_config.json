@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "grok-bot": {
+      "command": "bash",
+      "args": ["/ABS/PATH/TO/grok-bot-mcp/start-stdio.sh"],
+      "env": {
+        "GROK_BOT_MCP_ROOT": "/ABS/PATH/TO/grok-bot-mcp",
+        "GROK_BOT_WORKSPACE": "/ABS/PATH/TO/your-workspace",
+        "ALLOW_NO_AUTH_LOCAL": "1"
+      }
+    }
+  }
+}
