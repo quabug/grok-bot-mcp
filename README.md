@@ -23,7 +23,7 @@ Not a use case by itself: hosting a public unauthenticated filesystem/shell on t
 <details>
 <summary>Real session: ChatGPT acted as the coding agent.</summary>
 
-In a real session on September 10, 2026, **ChatGPT acted as the coding agent, while Grok Bot MCP provided access to a remote development environment.** The work covered ShiningPie's Yarn tooling and the companion ParadiseEngine tray integration. ChatGPT did not hand the implementation to a separate Grok agent and wait for it to solve the task.
+In a <a href="https://github.com/ParadiseEngine/ParadiseEngine/pull/314">real session on September 10, 2026</a>, **ChatGPT acted as the coding agent, while Grok Bot MCP provided access to a remote development environment.** The work covered ShiningPie's Yarn tooling and the companion ParadiseEngine tray integration. ChatGPT did not hand the implementation to a separate Grok agent and wait for it to solve the task.
 
 The interaction looked like this:
 
