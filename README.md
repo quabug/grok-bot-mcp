@@ -178,7 +178,9 @@ grok-bot-mcp/
 
 **One phrase you can send:**
 
-> Install and run [quabug/grok-bot-mcp](https://github.com/quabug/grok-bot-mcp), wire agent-bridge so ChatGPT can reach my other Grok Bot agents, then give me the MCP URL and connect steps.
+```text
+Install and run https://github.com/quabug/grok-bot-mcp, wire agent-bridge so ChatGPT can reach my other Grok Bot agents, then give me the MCP URL and connect steps.
+```
 
 **Full one-phase prompt** (copy the whole block):
 
