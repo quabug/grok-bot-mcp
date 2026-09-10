@@ -1,0 +1,24 @@
+{
+  "name": "oauth-gateway",
+  "version": "1.0.0",
+  "description": "",
+  "main": "gateway.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "http-proxy": "^1.18.1",
+    "mcp-oauth-server": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
+    "@types/express": "^5.0.6"
+  },
+  "type": "module"
+}

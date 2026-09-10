@@ -1,0 +1,45 @@
+Grok Bot MCP — SECURE (OAuth 2.1)
+=================================
+Started: 2026-09-10T02:16:35Z
+Package: chatgpt-local-mcp@1.0.3 (local) behind oauth-gateway (mcp-oauth-server@1.0.0)
+         branded serverInfo name=grok-bot title="Grok Bot"
+
+Security model:
+  - Local MCP bound to 127.0.0.1:3851 ONLY (no direct public exposure)
+  - OAuth 2.1 gateway on 127.0.0.1:3860: DCR + PKCE (S256) + CIMD (ChatGPT/OpenAI hosts)
+  - Owner password (bcrypt) at /consent; hashed under secrets/ (mode 600)
+  - /mcp requires valid OAuth Bearer with scope mcp:tools; unauthenticated → 401 + WWW-Authenticate
+  - cloudflared quick tunnel fronts the OAuth gateway ONLY (not raw MCP)
+  - Tools scoped to /workspace/chatgpt (no --bypass)
+  - Previous No-Auth URL earth-means-summary-electronic.trycloudflare.com is DEAD (HTTP 530)
+
+Auth for ChatGPT connector: OAuth
+  Name: Grok Bot
+  URL:  https://stars-favor-marking-careers.trycloudflare.com/mcp
+  Auth: OAuth
+
+Public base: https://stars-favor-marking-careers.trycloudflare.com/
+Local MCP:   http://127.0.0.1:3851/mcp
+Gateway:     http://127.0.0.1:3860/
+Owner password plaintext (handoff once): /workspace/grok-bot-mcp/secrets/OWNER_PASSWORD.txt
+Owner password hash: /workspace/grok-bot-mcp/secrets/owner_password.bcrypt
+Public URL file: /workspace/grok-bot-mcp/secrets/PUBLIC_BASE_URL.txt
+
+PIDs:
+  731044  mcp cli.js (--no-tunnel)
+  731060  start.js (watchdog, no tunnel)
+  731071  server.js (MCP HTTP 127.0.0.1:3851)
+  732343  oauth-gateway/gateway.js (127.0.0.1:3860)
+  731089  cloudflared -> http://127.0.0.1:3860
+
+Smoke (2026-09-10):
+  old public URL → HTTP 530 (dead)
+  unauthenticated POST /mcp → 401 invalid_token + resource_metadata
+  DCR + PKCE + owner password → token → initialize 200 serverInfo=Grok Bot
+  bad bearer → 401; wrong password → consent reject
+
+Restart:
+  bash /workspace/grok-bot-mcp/stop-secure.sh
+  bash /workspace/grok-bot-mcp/start-secure.sh
+  # NOTE: trycloudflare URL changes each restart — update ChatGPT connector URL.
+  # Do NOT use start.sh (disabled; would expose No Auth).

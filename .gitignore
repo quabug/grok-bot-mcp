@@ -1,0 +1,21 @@
+# secrets & runtime
+secrets/
+logs/
+run/
+node_modules/
+runtime/node_modules/
+oauth-gateway/node_modules/
+*.log
+.env
+.env.*
+
+# agent-bridge mailbox (live queue; keep code/scripts only)
+agent-bridge/outbox/
+agent-bridge/inbox/
+agent-bridge/sent/
+agent-bridge/NOTIFY
+agent-bridge/agents.json
+
+# OS / editor
+.DS_Store
+*.swp

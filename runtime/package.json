@@ -1,0 +1,46 @@
+{
+  "name": "chatgpt-local-mcp",
+  "version": "1.0.3",
+  "description": "Give ChatGPT (or any MCP client) agentic access to your local project folder — filesystem, terminal, git, processes, clipboard, archives and more — over a secure cloudflared tunnel. Folder-scoped by default for security.",
+  "type": "module",
+  "main": "src/server.js",
+  "bin": {
+    "chatgpt-local-mcp": "bin/cli.js"
+  },
+  "scripts": {
+    "start": "node scripts/start.js",
+    "start:log": "node scripts/start.js --log",
+    "win:start": "node scripts/start.js",
+    "win:log": "node scripts/start.js --log",
+    "serve": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/darkness0308/chatgpt-local-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/darkness0308/chatgpt-local-mcp.git"
+  },
+  "files": [
+    "bin",
+    "scripts",
+    "src",
+    "LICENSE"
+  ],
+  "keywords": [
+    "mcp",
+    "chatgpt",
+    "ai",
+    "local",
+    "filesystem",
+    "model-context-protocol",
+    "claude",
+    "llm"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
