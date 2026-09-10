@@ -100,8 +100,8 @@ proxy.on('error', (err, req, res) => {
   }
 });
 
-// Trust Cloudflare / proxy headers for correct host
-app.set('trust proxy', true);
+// Trust single Cloudflare hop for correct client IP / Host (express-rate-limit rejects `true`)
+app.set('trust proxy', 1);
 
 // --- private_key_jwt support for ChatGPT CIMD clients -----------------------
 // mcp-oauth-server only allows CIMD auth method "none" and does not verify
@@ -164,6 +164,18 @@ app.use(
     scopesSupported: ['mcp:tools'],
   })
 );
+
+// Root PRM (RFC 9728): some clients probe /.well-known/oauth-protected-resource
+// without the /mcp path suffix. Path-based /mcp PRM remains via mcpAuthRouter.
+app.get('/.well-known/oauth-protected-resource', (_req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.json({
+    resource: PUBLIC_BASE + '/mcp',
+    authorization_servers: [PUBLIC_BASE + '/'],
+    scopes_supported: ['mcp:tools'],
+    resource_name: 'Grok Bot MCP',
+  });
+});
 
 // Health (unauthenticated)
 app.get('/health', (_req, res) => {
