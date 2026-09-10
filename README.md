@@ -20,6 +20,177 @@ What this MCP is for:
 
 Not a use case by itself: hosting a public unauthenticated filesystem/shell on the internet.
 
+<details>
+<summary>Real session: how ChatGPT used Grok Bot MCP to implement ShiningPie's Yarn extension</summary>
+
+In a real session on September 10, 2026, **ChatGPT acted as the coding agent, while Grok Bot MCP provided access to a remote development environment.** The work covered ShiningPie's Yarn tooling and the companion ParadiseEngine tray integration. ChatGPT did not hand the implementation to a separate Grok agent and wait for it to solve the task.
+
+The interaction looked like this:
+
+```text
+User request
+    ↓
+ChatGPT: decide the next action and prepare code, patches, or commands
+    ↓
+Discover tools through api_tool
+    ↓
+Call Grok Bot MCP tools
+    ↓
+Remote workspace: files, Git, dotnet, Azure CLI, GitHub CLI
+    ↓
+Receive file contents, command output, exit codes, or process status
+    ↓
+ChatGPT: inspect the result, make corrections, and issue the next call
+```
+
+This walkthrough describes the calls and results visible in that conversation, rather than assumptions about Grok Bot's internal implementation. The paths, tool namespaces, process identifiers, and commands below are examples from that session, not required settings for every installation.
+
+### 1. Discovering the available tools
+
+ChatGPT first used its tool-discovery interface to load Grok Bot's available actions. For example, the following discovery call appeared in the session:
+
+```python
+api_tool.list_resources(
+    paths=["Grok_Bot_MCP"],
+    query="run_script"
+)
+```
+
+That call **does not execute a script**. It discovers the matching functions and their argument schemas. After discovery, ChatGPT can invoke a function such as `Grok_Bot_MCP.run_script`. The `api_tool` discovery interface shown here belongs to the ChatGPT client; it is not an MCP protocol method that every client uses.
+
+Earlier turns exposed the connector under `Grok_Bot`; later turns used `Grok_Bot_MCP`. Those are the tool namespaces shown in the conversation. The trace alone does not establish whether that naming change corresponds to a different underlying server.
+
+There were repeated discovery calls during the session. These were not repeated clones, builds, or edits—just additional tool discovery. Several were redundant and added overhead.
+
+### 2. Reading and changing the remote workspace
+
+The repository operations happened under these paths in the environment reached through Grok Bot:
+
+```text
+/workspace/chatgpt/ShiningPie
+/workspace/chatgpt/ParadiseEngine
+```
+
+ChatGPT used a mixture of dedicated filesystem/Git tools and command execution:
+
+| Work | Grok Bot tools used |
+|------|---------------------|
+| Read source and repository guidance | `read_many_files`, `read_file_lines`, `search_text` |
+| Create or modify source | `write_file`, `write_many_files`, `patch_file`, `copy_path` |
+| Inspect repository changes | `git_status`, `git_diff`, plus Git commands |
+| Run builds, tests, and repository operations | `run_command`, `run_script` |
+| Start and inspect longer-running commands | `start_process`, `read_process` |
+
+For example, ChatGPT read `AGENTS.md`, the existing Yarn compiler, launcher build targets, and the native tray implementations before editing them.
+
+**ChatGPT supplied the implementation content and edits.** The MCP tools applied them to the workspace and returned results such as the number of files written or patches applied. ChatGPT then read files or diffs back to inspect the changes.
+
+The uploaded document's `/mnt/data/...` path was separate from these remote repository paths. They should not be assumed to refer to the same filesystem.
+
+### 3. Using `run_script` as a programmable execution interface
+
+For multi-step operations, ChatGPT sent Python code to `run_script`. One actual call in the session had the following shape; the script body is omitted here:
+
+```python
+Grok_Bot_MCP.run_script(
+    language="python",
+    cwd="/workspace/chatgpt/ParadiseEngine",
+    timeout=120000,
+    code="...Python code..."
+)
+```
+
+The returned execution records showed commands such as:
+
+```text
+python3 /tmp/mcp-script-89a02476a406.py
+```
+
+Inside those scripts, ChatGPT used `subprocess.run(...)` to invoke Git, `dotnet`, Azure CLI, and GitHub CLI. This combined related operations, parsed their JSON output, asserted expected results, and stopped when a condition failed.
+
+A concrete example was the concurrency regression check. The script temporarily introduced a lost-edit defect, rebuilt and ran the Coyote tests, required the expected test to fail, restored the original source in a `finally` block, then rebuilt and required the tests to pass.
+
+That was **Python executing a test procedure supplied by ChatGPT**, not a natural-language assignment sent to another agent.
+
+### 4. Running longer commands and checking their results
+
+For builds and test suites, ChatGPT often used `start_process`. It returned a process identifier and PID, for example:
+
+```text
+processId: proc-1789025731562-3079ba9e
+pid: 969105
+```
+
+The command could continue executing while ChatGPT made other tool calls. ChatGPT subsequently used `read_process` or read its redirected log file to determine what happened.
+
+The execution tools returned fields including:
+
+```text
+success
+exitCode
+timedOut
+stdout
+stderr
+startedAt
+finishedAt
+```
+
+**A successful tool invocation was not sufficient evidence that the build or tests passed.** ChatGPT inspected the actual output and test summaries.
+
+This distinction mattered in the session: some commands combined a build with `tail` to display its log. The shell could return success because `tail` succeeded even though the earlier build failed. The logs exposed those failures, which were corrected or addressed before rerunning the checks.
+
+### 5. Accessing Azure DevOps and GitHub through command-line tools
+
+For this workflow, ChatGPT did not use a browser to click through Azure DevOps or GitHub, nor a separate native repository connector. It invoked the tools installed in Grok Bot's environment:
+
+```text
+git → fetch, branch, diff, commit, push
+az  → Azure DevOps work items and pull requests
+gh  → GitHub pull requests and account/repository queries
+```
+
+Examples from the session include:
+
+```sh
+az repos pr show --id 87 --organization https://dev.azure.com/ShiningPie
+```
+
+and:
+
+```sh
+gh pr create \
+  --repo ParadiseEngine/ParadiseEngine \
+  --base main \
+  --head feat/tray-task-submenus \
+  --title "Add project task submenus to the existing watch tray" \
+  --body-file /workspace/chatgpt/ShiningPie/.editor/tray-engine-pr.md \
+  --assignee quabug
+```
+
+Those commands used authentication available in that environment. For example, `gh api user` returned `quabug`. The complete credential-storage or provisioning mechanism cannot be determined from the visible execution records.
+
+After creating or updating resources, ChatGPT queried them again to verify the saved title, source and target branches, commit, reviewer or assignee, and issue linkage.
+
+### 6. What this was—and was not
+
+For the ShiningPie implementation work, **ChatGPT did not use `list_agents`, `message_agent`, or `check_replies`**. Those are a different, agent-messaging workflow from the direct tool execution used here. Their absence from this workflow does not imply that the optional agent bridge is unavailable.
+
+The distinction is:
+
+```text
+What happened:
+ChatGPT → Grok Bot tool → filesystem/command → result → ChatGPT
+
+What did not happen:
+ChatGPT → message_agent("implement this") → another AI develops it independently
+```
+
+The trace also does not reveal the MCP transport configuration, the server's internal architecture, or which physical machine hosts the workspace. It shows the functions invoked and the execution environment's reported results—not a packet-level protocol trace or proof that execution occurred on the user's desktop.
+
+**In practical terms, Grok Bot MCP functioned as ChatGPT's remote terminal, file editor, and process interface. ChatGPT directed the development and verification loop; MCP carried out the requested operations and returned their results.**
+
+</details>
+
 ## Features
 
 - **Workspace tools** (via `chatgpt-local-mcp`): files, shell, git/`gh`, and related utilities, scoped to `GROK_BOT_WORKSPACE`
