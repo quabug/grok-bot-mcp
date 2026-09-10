@@ -6,7 +6,7 @@ Portable **Model Context Protocol** server that exposes a **Grok Bot** tool surf
 - **Local clients** use a **stdio** bridge to the same loopback MCP (no tunnel).
 - Workspace tools stay folder-scoped; an optional **agent-bridge** mailbox talks to other Grok Bot agents.
 
-From Grok Bot, run `bash start-secure.sh` to launch this MCP, then connect it in ChatGPT, Claude, Cursor, or any MCP-compatible agent/website using the printed HTTPS URL (OAuth) or the stdio command in `examples/`.
+From Grok Bot, paste the **One-phase install** prompt below (or run `bash start-secure.sh`) to launch this MCP, wire agent-bridge to your other agents, then connect ChatGPT / Claude / Cursor with the printed HTTPS URL (OAuth) or stdio in `examples/`.
 
 ## Features
 
@@ -174,38 +174,45 @@ grok-bot-mcp/
 7. **Client differences** — ChatGPT remote = HTTPS + OAuth. Claude / Cursor often prefer stdio (`start-stdio.sh`).
 8. **Repo hygiene** — keep `secrets/`, mailboxes, `STATUS.txt`, `webhook.url`, and binaries out of git.
 
-## Paste into Grok Bot (full setup)
+## One-phase install (paste into Grok Bot)
 
-Copy everything in the block below into a Grok Bot chat to have it clone, install, secure-start, wire the agent-bridge routine, and tell you how to connect ChatGPT / Claude / Cursor.
+**One phrase you can send:**
+
+> Install and run [quabug/grok-bot-mcp](https://github.com/quabug/grok-bot-mcp), wire agent-bridge so ChatGPT can reach my other Grok Bot agents, then give me the MCP URL and connect steps.
+
+**Full one-phase prompt** (copy the whole block):
 
 ```text
-Set up Grok Bot MCP on this machine end-to-end.
+ONE-PHASE SETUP: Grok Bot MCP + connect my other agents
 
-Repo: https://github.com/quabug/grok-bot-mcp (private; use gh as the logged-in user).
+Repo: https://github.com/quabug/grok-bot-mcp (private; use gh as the logged-in GitHub user).
 
-Do this:
-1. Clone into a durable path if missing (prefer ~/grok-bot-mcp or /workspace/grok-bot-mcp). Set GROK_BOT_MCP_ROOT to that path.
-2. Create a workspace folder for tool scope (e.g. $GROK_BOT_MCP_ROOT/../chatgpt or /workspace/chatgpt). Export GROK_BOT_WORKSPACE to it.
-3. npm install at repo root; also npm install in oauth-gateway/ and runtime/ as needed.
-4. Ensure cloudflared is available (install, PATH, or let start-secure.sh download linux-amd64 into bin/ — gitignored). Do not commit binaries/symlinks.
-5. Optional stable tunnel: export CLOUDFLARE_TUNNEL_TOKEN and GROK_BOT_PUBLIC_BASE_URL before start. Otherwise quick tunnel is fine for demos.
-6. Optional faster outbox: put a wake URL in agent-bridge/webhook.url (first line) or set AGENT_BRIDGE_WEBHOOK_URL.
-7. Run: bash start-secure.sh
-8. Run: npm run doctor  (fix hard failures)
-9. Read secrets/PUBLIC_BASE_URL.txt and confirm secrets/OWNER_PASSWORD.txt exists (mode 600). Never commit secrets or paste the password into git.
-10. Create or update a Grok Bot routine named like "Grok Bot MCP agent-bridge" on @every 5m (and/or webhook-triggered) that:
-   - Lists pending agent-bridge/outbox items
-   - Delivers each with SendToAgent (preface: relayed from ChatGPT via Grok Bot MCP)
-   - Runs agent-bridge/bin/mark-sent.sh <id>
-   - On [agent] replies meant for the bridge, runs add-reply.sh so check_replies works
-   - Stays quiet when outbox is empty
-11. Tell me the public MCP URL (`…/mcp`), that Auth is OAuth, and the path to the owner password file (not the password itself).
-12. Give short connect steps for:
-   - ChatGPT Developer Mode connector (URL + OAuth; reconnect after tool changes)
-   - Claude Desktop / Cursor using examples/ + start-stdio.sh
-13. Smoke-check: unauthenticated public /mcp returns 401; local tools/list includes list_agents, message_agent, check_replies.
+Goal: In one pass, install the MCP on this machine, expose it securely for ChatGPT (and optionally Claude/Cursor), and wire agent-bridge so remote MCP clients can message my other Grok Bot agents (list_agents / message_agent / check_replies) with you delivering the mailbox.
 
-If something is already running, reuse it and report PIDs/URLs instead of duplicating. Prefer start-secure.sh over any No-Auth public exposure.
+Do all of the following:
+
+A) Install & run MCP
+1. Clone if missing to a durable path (prefer /workspace/grok-bot-mcp or ~/grok-bot-mcp). Export GROK_BOT_MCP_ROOT.
+2. Create/use a workspace folder for tool scope (prefer /workspace/chatgpt or $GROK_BOT_MCP_ROOT/../chatgpt). Export GROK_BOT_WORKSPACE. Set GROK_BOT_SELF_AGENT_ID to this agent's id and GROK_BOT_AGENTS_DIR to the local agents profiles dir if not default.
+3. npm install at repo root; npm install in oauth-gateway/ and runtime/.
+4. Run bash start-secure.sh (OAuth gateway + loopback MCP + tunnel). Prefer CLOUDFLARE_TUNNEL_TOKEN + GROK_BOT_PUBLIC_BASE_URL if available; otherwise quick tunnel is OK.
+5. Run npm run doctor; fix hard failures.
+6. Confirm secrets/PUBLIC_BASE_URL.txt and secrets/OWNER_PASSWORD.txt exist (mode 600). Never commit secrets or paste the password into chat/git — only report the file path.
+
+B) Connect other Grok Bot agents via MCP (agent-bridge)
+7. Create or update a routine "Grok Bot MCP agent-bridge" that fires on webhook and/or @every 5m:
+   - Flush agent-bridge/outbox: SendToAgent each pending item (preface: relayed from ChatGPT via Grok Bot MCP), then bin/mark-sent.sh <id>
+   - On teammate [agent] replies for the bridge: bin/add-reply.sh <from_uuid> "<text>" so MCP check_replies works
+   - Stay quiet when outbox is empty
+8. If the routine has a Webhook URL, save it as agent-bridge/webhook.url (one line) so message_agent can wake you immediately; soft-reload MCP if needed without unnecessarily rotating the tunnel URL.
+9. Smoke: list_agents returns my teammates; message_agent can target one by name; check_replies reads inbox.
+
+C) Hand me connect info
+10. Report: public MCP URL (.../mcp), Auth=OAuth, owner password file path (not the value), routine status, webhook configured yes/no, doctor result.
+11. Short steps for ChatGPT Developer Mode (create connector → URL + OAuth → consent with owner password; Disconnect/Reconnect after tool changes) and for Claude/Cursor stdio via examples/ + start-stdio.sh.
+12. If already running, reuse PIDs/URLs instead of duplicating. Never expose No-Auth on a public URL.
+
+Prefer start-secure.sh. Keep cloudflared URL stable when only restarting Node if possible.
 ```
 
 ## License
