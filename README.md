@@ -6,7 +6,19 @@ Portable **Model Context Protocol** server that exposes a **Grok Bot** tool surf
 - **Local clients** use a **stdio** bridge to the same loopback MCP (no tunnel).
 - Workspace tools stay folder-scoped; an optional **agent-bridge** mailbox talks to other Grok Bot agents.
 
-From Grok Bot, paste the **One-phase install** prompt below (or run `bash start-secure.sh`) to launch this MCP, wire agent-bridge to your other agents, then connect ChatGPT / Claude / Cursor with the printed HTTPS URL (OAuth) or stdio in `examples/`.
+From Grok Bot, paste the **One-phase install** prompt below (or run `bash start-secure.sh`) to launch this MCP and wire agent-bridge. The install asks which MCP client(s) to connect — ChatGPT, Claude, Cursor, Codex, or your own — then gives matching connect steps.
+## Use cases
+
+What this MCP is for:
+
+1. **Give an external AI your Grok Bot workstation** — A remote MCP client gets a scoped shell/files/`gh` workspace on the same machine as Grok Bot, without handing over the whole disk.
+2. **Orchestrate Grok Bot teammates from outside** — Via agent-bridge (`list_agents` / `message_agent` / `check_replies`), a client can ask specialized agents (QA, 小红书, VPS, research, …) and pull replies back into its own chat.
+3. **End-to-end “agent of agents” pipelines** — Example: ChatGPT or Claude plans work → MCP tools edit a repo / open PRs → MCP messages a Grok Bot specialist → results return through `check_replies`.
+4. **Local IDE / desktop agents** — Claude Desktop, Cursor, or Codex CLI attach over **stdio** for the same tools without a public tunnel.
+5. **Secure remote demos** — HTTPS + OAuth (owner password / CIMD including `private_key_jwt`) so the connector is not a No-Auth open URL.
+6. **Keep secrets and scope on your box** — Workspace root is explicit (`GROK_BOT_WORKSPACE`); credentials stay in gitignored `secrets/`; mailboxes stay local.
+
+Not a use case by itself: hosting a public unauthenticated filesystem/shell on the internet.
 
 ## Features
 
@@ -179,42 +191,51 @@ grok-bot-mcp/
 **One phrase you can send:**
 
 ```text
-Install and run https://github.com/quabug/grok-bot-mcp, wire agent-bridge so ChatGPT can reach my other Grok Bot agents, then give me the MCP URL and connect steps.
+Install and run https://github.com/quabug/grok-bot-mcp, wire agent-bridge to my other Grok Bot agents, ask me which MCP client(s) to connect, then finish setup for those clients.
 ```
 
 **Full one-phase prompt** (copy the whole block):
 
 ```text
-ONE-PHASE SETUP: Grok Bot MCP + connect my other agents
+ONE-PHASE SETUP: Grok Bot MCP + agent-bridge + chosen MCP client(s)
 
 Repo: https://github.com/quabug/grok-bot-mcp (private; use gh as the logged-in GitHub user).
 
-Goal: In one pass, install the MCP on this machine, expose it securely for ChatGPT (and optionally Claude/Cursor), and wire agent-bridge so remote MCP clients can message my other Grok Bot agents (list_agents / message_agent / check_replies) with you delivering the mailbox.
+Goal: Install the MCP on this machine, wire agent-bridge so *any* connected MCP client can message my other Grok Bot agents, then finish connect steps only for the client(s) I choose.
 
-Do all of the following:
+Before connecting a client, ASK ME which MCP client(s) to set up. Offer choices (multi-select OK) and allow a custom answer:
+- ChatGPT (HTTPS + OAuth connector)
+- Claude Desktop / Claude Code (usually stdio)
+- Cursor (stdio or HTTP)
+- Codex / Codex CLI
+- Other (I will type the agent/product name and preferred transport: HTTPS+OAuth or stdio)
+
+Do not assume ChatGPT. If I pick several, cover each. If I type my own, adapt steps to that product.
+
+Then do:
 
 A) Install & run MCP
-1. Clone if missing to a durable path (prefer /workspace/grok-bot-mcp or ~/grok-bot-mcp). Export GROK_BOT_MCP_ROOT.
-2. Create/use a workspace folder for tool scope (prefer /workspace/chatgpt or $GROK_BOT_MCP_ROOT/../chatgpt). Export GROK_BOT_WORKSPACE. Set GROK_BOT_SELF_AGENT_ID to this agent's id and GROK_BOT_AGENTS_DIR to the local agents profiles dir if not default.
+1. Clone if missing (prefer /workspace/grok-bot-mcp or ~/grok-bot-mcp). Export GROK_BOT_MCP_ROOT.
+2. Workspace folder for tool scope (prefer /workspace/chatgpt or $GROK_BOT_MCP_ROOT/../chatgpt). Export GROK_BOT_WORKSPACE. Set GROK_BOT_SELF_AGENT_ID to this agent's id; GROK_BOT_AGENTS_DIR if needed.
 3. npm install at repo root; npm install in oauth-gateway/ and runtime/.
-4. Run bash start-secure.sh (OAuth gateway + loopback MCP + tunnel). Prefer CLOUDFLARE_TUNNEL_TOKEN + GROK_BOT_PUBLIC_BASE_URL if available; otherwise quick tunnel is OK.
-5. Run npm run doctor; fix hard failures.
-6. Confirm secrets/PUBLIC_BASE_URL.txt and secrets/OWNER_PASSWORD.txt exist (mode 600). Never commit secrets or paste the password into chat/git — only report the file path.
+4. Start transport appropriately:
+   - If any chosen client needs a public HTTPS URL → bash start-secure.sh (named tunnel token if available; else quick tunnel).
+   - If only local stdio clients → bash start-stdio.sh may suffice (still fine to run start-secure.sh if I also want remote later).
+5. npm run doctor; fix hard failures.
+6. Confirm secrets paths exist when using HTTPS (PUBLIC_BASE_URL.txt, OWNER_PASSWORD.txt mode 600). Never commit secrets or paste the password into chat/git — report file paths only.
 
-B) Connect other Grok Bot agents via MCP (agent-bridge)
-7. Create or update a routine "Grok Bot MCP agent-bridge" that fires on webhook and/or @every 5m:
-   - Flush agent-bridge/outbox: SendToAgent each pending item (preface: relayed from ChatGPT via Grok Bot MCP), then bin/mark-sent.sh <id>
-   - On teammate [agent] replies for the bridge: bin/add-reply.sh <from_uuid> "<text>" so MCP check_replies works
-   - Stay quiet when outbox is empty
-8. If the routine has a Webhook URL, save it as agent-bridge/webhook.url (one line) so message_agent can wake you immediately; soft-reload MCP if needed without unnecessarily rotating the tunnel URL.
-9. Smoke: list_agents returns my teammates; message_agent can target one by name; check_replies reads inbox.
+B) Wire other Grok Bot agents (agent-bridge) — always
+7. Create/update routine "Grok Bot MCP agent-bridge" (webhook and/or @every 5m):
+   - Flush outbox with SendToAgent (preface: relayed via Grok Bot MCP from the external client), then mark-sent.sh
+   - On bridged [agent] replies: add-reply.sh so check_replies works
+   - Stay quiet when outbox empty
+8. Save routine Webhook URL to agent-bridge/webhook.url when available; soft-reload MCP without needlessly rotating the tunnel.
+9. Smoke agent tools: list_agents / message_agent / check_replies.
 
-C) Hand me connect info
-10. Report: public MCP URL (.../mcp), Auth=OAuth, owner password file path (not the value), routine status, webhook configured yes/no, doctor result.
-11. Short steps for ChatGPT Developer Mode (create connector → URL + OAuth → consent with owner password; Disconnect/Reconnect after tool changes) and for Claude/Cursor stdio via examples/ + start-stdio.sh.
-12. If already running, reuse PIDs/URLs instead of duplicating. Never expose No-Auth on a public URL.
-
-Prefer start-secure.sh. Keep cloudflared URL stable when only restarting Node if possible.
+C) Finish only for my chosen client(s)
+10. Report MCP URL (if HTTPS), Auth mode, password file path (not value), routine/webhook status, doctor result.
+11. Give short connect steps **only for the client(s) I selected** (and the custom one if any). Include reconnect-after-tool-change notes where that client caches tools.
+12. Reuse running PIDs/URLs when possible. Never expose No-Auth on a public URL.
 ```
 
 ## License
