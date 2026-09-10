@@ -1,14 +1,14 @@
 {
   "name": "grok-bot-mcp",
   "version": "1.0.0",
-  "description": "",
+  "description": "Grok Bot MCP server with OAuth gateway and agent-bridge for ChatGPT",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "quabug",
+  "license": "MIT",
   "dependencies": {
     "chatgpt-local-mcp": "^1.0.3"
   }
