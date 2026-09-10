@@ -12,7 +12,7 @@ From Grok Bot, paste the **One-phase install** prompt below (or run `bash start-
 What this MCP is for:
 
 1. **Give an external AI your Grok Bot workstation** — A remote MCP client gets a scoped shell/files/`gh` workspace on the same machine as Grok Bot, without handing over the whole disk.
-2. **Orchestrate Grok Bot teammates from outside** — Via agent-bridge (`list_agents` / `message_agent` / `check_replies`), a client can ask specialized agents (QA, 小红书, VPS, research, …) and pull replies back into its own chat.
+2. **Orchestrate Grok Bot teammates from outside** — Via agent-bridge (`list_agents` / `message_agent` / `check_replies`), a client can ask specialized agents (QA, X, VPS, research, …) and pull replies back into its own chat.
 3. **End-to-end “agent of agents” pipelines** — Example: ChatGPT or Claude plans work → MCP tools edit a repo / open PRs → MCP messages a Grok Bot specialist → results return through `check_replies`.
 4. **Local IDE / desktop agents** — Claude Desktop, Cursor, or Codex CLI attach over **stdio** for the same tools without a public tunnel.
 5. **Secure remote demos** — HTTPS + OAuth (owner password / CIMD including `private_key_jwt`) so the connector is not a No-Auth open URL.
