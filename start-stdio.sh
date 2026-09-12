@@ -3,6 +3,12 @@
 # No cloudflared / OAuth tunnel required for stdio clients.
 set -euo pipefail
 
+export GROK_BOT_MCP_GENERAL_ONLY="${GROK_BOT_MCP_GENERAL_ONLY:-false}"
+case "$GROK_BOT_MCP_GENERAL_ONLY" in
+  true|false) ;;
+  *) echo "GROK_BOT_MCP_GENERAL_ONLY must be true or false" >&2; exit 1 ;;
+esac
+
 ROOT="${GROK_BOT_MCP_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 export GROK_BOT_MCP_ROOT="$ROOT"
 
@@ -31,12 +37,12 @@ mkdir -p "$LOG_DIR" "$PID_DIR" "$HOME_DIR/src"
 
 # Ensure deps for bridge + runtime
 if [[ ! -d "$ROOT/node_modules/@modelcontextprotocol/sdk" ]]; then
-  echo "[stdio] installing root deps (MCP SDK)..."
-  (cd "$ROOT" && npm install --no-audit --no-fund)
+  echo "[stdio] installing root deps (MCP SDK)..." >&2
+  (cd "$ROOT" && npm install --no-audit --no-fund) >&2
 fi
 if [[ ! -d "$HOME_DIR/node_modules/express" ]]; then
-  echo "[stdio] installing runtime deps..."
-  (cd "$HOME_DIR" && npm install --omit=dev --no-audit --no-fund)
+  echo "[stdio] installing runtime deps..." >&2
+  (cd "$HOME_DIR" && npm install --omit=dev --no-audit --no-fund) >&2
 fi
 
 # Keep branded runtime/src/server.js as source of truth; sync into package copy used by cli.
@@ -46,6 +52,15 @@ fi
 
 ensure_local_mcp() {
   if curl -sf "http://127.0.0.1:${PORT_MCP}/health" >/dev/null 2>&1; then
+    if ! curl -sf "http://127.0.0.1:${PORT_MCP}/health" | node --input-type=module -e '
+      let input = "";
+      for await (const chunk of process.stdin) input += chunk;
+      const actual = JSON.parse(input).generalOnly === true;
+      process.exit(actual === (process.env.GROK_BOT_MCP_GENERAL_ONLY === "true") ? 0 : 1);
+    '; then
+      echo "[stdio] existing MCP has a different tool mode; restart it or choose another GROK_BOT_MCP_PORT" >&2
+      exit 1
+    fi
     echo "[stdio] local MCP already up on 127.0.0.1:${PORT_MCP}"
     return 0
   fi
@@ -87,10 +102,10 @@ ensure_local_mcp() {
   exit 1
 }
 
-ensure_local_mcp
+ensure_local_mcp >&2
 
 export GROK_BOT_MCP_URL="${GROK_BOT_MCP_URL:-http://127.0.0.1:${PORT_MCP}/mcp}"
 export GROK_BOT_MCP_PORT="$PORT_MCP"
 
-echo "[stdio] bridge → $GROK_BOT_MCP_URL (loopback, no OAuth)"
+echo "[stdio] bridge → $GROK_BOT_MCP_URL (loopback, no OAuth)" >&2
 exec node "$ROOT/bin/stdio-bridge.js"

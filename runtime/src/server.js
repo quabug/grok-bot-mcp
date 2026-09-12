@@ -50,10 +50,6 @@ function resolveGrokBotMcpRoot() {
 }
 
 const GROK_BOT_MCP_ROOT = resolveGrokBotMcpRoot();
-const agentBridgeModule = path.join(GROK_BOT_MCP_ROOT, "agent-bridge", "mcp-tools.js");
-const { agentBridgeTools, handleAgentBridgeTool } = await import(
-  pathToFileURL(agentBridgeModule).href
-);
 
 function loadEnvFile(filePath) {
   if (!filePath || !fsSync.existsSync(filePath)) return;
@@ -79,8 +75,18 @@ const inferredHome = process.env.AI_PC_MCP_HOME || path.resolve(__dirname, "..")
 const envFile = process.env.AI_PC_MCP_ENV_FILE || path.join(inferredHome, ".env");
 loadEnvFile(envFile);
 
-const SERVER_NAME = "Grok Bot";
-const SERVER_ID   = "grok-bot";
+const generalOnlySetting = process.env.GROK_BOT_MCP_GENERAL_ONLY || "false";
+if (!["true", "false"].includes(generalOnlySetting)) {
+  throw new Error("GROK_BOT_MCP_GENERAL_ONLY must be true or false");
+}
+const GENERAL_ONLY = generalOnlySetting === "true";
+// Do not import the bridge in general mode: loading it creates mailboxes and a listener.
+const { agentBridgeTools, handleAgentBridgeTool } = GENERAL_ONLY
+  ? { agentBridgeTools: [], handleAgentBridgeTool: async () => undefined }
+  : await import(pathToFileURL(path.join(GROK_BOT_MCP_ROOT, "agent-bridge", "mcp-tools.js")).href);
+
+const SERVER_NAME = GENERAL_ONLY ? "Workspace MCP" : "Grok Bot";
+const SERVER_ID   = GENERAL_ONLY ? "workspace-mcp" : "grok-bot";
 const VERSION     = "1.0.0";
 const BYPASS_MODE = process.env.AI_PC_MCP_BYPASS === "true";
 const PORT = Number(process.env.AI_PC_MCP_PORT || process.env.PORT || 3001);
@@ -2188,7 +2194,7 @@ async function handleMcpMessage(message, req) {
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: SERVER_ID, title: SERVER_NAME, version: VERSION },
         instructions:
-          `Grok Bot v${VERSION} — 56 tools for agentic coding and system control on Windows/Linux/macOS.\n\n`
+          `${SERVER_NAME} v${VERSION} — ${tools.length} tools for agentic coding and system control on Windows/Linux/macOS.\n\n`
           + `SCOPE: ${BYPASS_MODE ? "BYPASS MODE — full filesystem access." : `Folder-scoped — restricted to: ${ACCESS_ROOT}`}\n\n`
           + "CODING WORKFLOW:\n"
           + "• count_lines → read_file_lines: gauge a large file then read only the range you need.\n"
@@ -2301,7 +2307,7 @@ function dashboardHtml(req) {
   <main class="wrap">
     <section class="hero">
       <div class="badge"><span class="dot"></span> Running on port ${PORT}</div>
-      <h1>Grok Bot</h1>
+      <h1>${SERVER_NAME}</h1>
       <p class="sub">A protected desktop-style bridge for ChatGPT/MCP clients. It exposes advanced filesystem, terminal, process, git, network, and system tools while guarding the connector runtime from tool calls.</p>
       <div class="actions">
         <a class="pill primary" href="${mcpUrl}">MCP endpoint</a>
@@ -2362,6 +2368,7 @@ app.get("/health", (req, res) => {
     defaultCwd: DEFAULT_CWD,
     protectedPathCount: PROTECTED_PATHS.length,
     tools: tools.length,
+    generalOnly: GENERAL_ONLY,
     uptimeSeconds: process.uptime(),
   });
 });

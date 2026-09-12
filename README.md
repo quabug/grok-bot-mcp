@@ -4,6 +4,7 @@ Portable **Model Context Protocol** server that exposes a **Grok Bot** tool surf
 
 - **Remote clients** connect over **HTTPS + OAuth 2.1** (Streamable HTTP `/mcp`).
 - **Local clients** use a **stdio** bridge to the same loopback MCP (no tunnel).
+- **General-only mode** runs on hosts without Grok Bot: set `GROK_BOT_MCP_GENERAL_ONLY=true`.
 - Workspace tools stay folder-scoped; an optional **agent-bridge** mailbox talks to other Grok Bot agents.
 
 From Grok Bot, paste the **One-phase install** prompt below (or run `bash start-secure.sh`) to launch this MCP and wire agent-bridge. The install asks which MCP client(s) to connect — ChatGPT, Claude, Cursor, Codex, or your own — then gives matching connect steps.
@@ -256,6 +257,38 @@ bash stop-secure.sh
 
 Cloudflare **quick** tunnels change URL on restart — update remote connectors, or use a named tunnel token as above.
 
+### General tools only (hosts without Grok Bot)
+
+Set `GROK_BOT_MCP_GENERAL_ONLY=true` to run on a regular development machine
+without Grok Bot, agent profiles, or a parent agent routine:
+
+```bash
+export GROK_BOT_MCP_GENERAL_ONLY=true
+export GROK_BOT_WORKSPACE="$HOME/projects"
+bash start-stdio.sh
+# For remote HTTPS + OAuth instead:
+# bash start-secure.sh
+```
+
+This mode identifies itself as **Workspace MCP** and retains the general file,
+shell, Git, process, network, and utility tools. It does not load the agent bridge,
+create its mailboxes, or start its notification listener. `list_agents`,
+`message_agent`, and `check_replies` are neither listed nor callable.
+The existing workspace scope and authentication settings still apply.
+
+For desktop client configs, add `"GROK_BOT_MCP_GENERAL_ONLY": "true"` to the
+command's `env` object. The option also works when running
+`node runtime/src/server.js` directly (including from `runtime/.env`).
+Direct launches still need explicit workspace, host, port, and authentication
+configuration; the startup scripts set these for loopback use.
+
+The default is `false`, preserving the Grok Bot agent tools. Only `true` and
+`false` are accepted. Restart the MCP server when changing modes and refresh
+the client's tool list. The stdio launcher rejects reuse of a server running
+the other mode; stop that server or select a different `GROK_BOT_MCP_PORT`.
+Run `GROK_BOT_MCP_GENERAL_ONLY=true npm run doctor` for remote-stack checks
+that expect general tools and skip agent notification/mailbox checks.
+
 ### Local stdio (Claude Desktop, Cursor, …)
 
 No tunnel or OAuth required. The bridge talks to loopback MCP only:
@@ -281,6 +314,66 @@ npm run doctor
 
 Checks Node version, deps, ports `3851`/`3860`/`3861`, MCP `tools/list` (agent tools), gateway `401` without auth, secrets file presence (not contents), cloudflared, outbox pending count, and optional webhook config. Exits non-zero on hard failures.
 
+## Docker
+
+The image runs the HTTP MCP server in **general-only mode** by default, as the
+unprivileged `node` user (UID/GID 1000). It includes Node.js 22, Python 3, Git,
+GitHub CLI, curl, and zip utilities. Tools operate inside the container; mount
+the folder you want them to access at `/workspace`.
+
+```bash
+docker build -t grok-bot-mcp:local .
+docker run --rm --init --name grok-bot-mcp \
+  -p 127.0.0.1:3851:3851 \
+  --mount "type=bind,source=$PWD,target=/workspace" \
+  grok-bot-mcp:local
+```
+
+Connect an HTTP MCP client to `http://127.0.0.1:3851/mcp`. Health is available
+at `http://127.0.0.1:3851/health`. On Linux, ensure the mounted folder is writable
+by UID 1000, or run with `--user "$(id -u):$(id -g)"` to match its ownership.
+Project-specific SDKs and dependencies can be added in a derived image.
+
+The image runs the raw HTTP runtime; it does **not** include the OAuth gateway
+or Cloudflare tunnel. Keep the published port on loopback as shown. Remote
+access requires an authenticated HTTPS gateway in front of this container.
+
+To opt into Grok Bot agent tools, pass `-e GROK_BOT_MCP_GENERAL_ONLY=false`,
+mount agent profiles read-only, and set `GROK_BOT_AGENTS_DIR` and
+`GROK_BOT_SELF_AGENT_ID`. Persist the mailbox directories under
+`/app/agent-bridge/{outbox,inbox,sent}` on writable mounts and arrange parent
+delivery as described in [Agent bridge](#agent-bridge).
+
+### Publishing versioned images
+
+The [Docker workflow](.github/workflows/docker.yml) tests the runtime and builds
+and smoke-tests the image on pull requests. Pushing a tag in the exact form
+`vMAJOR.MINOR.PATCH`, such as `v0.1.2`, also publishes an AMD64/ARM64 image to
+GitHub Container Registry after those checks pass:
+
+```bash
+# After committing and pushing the release changes:
+git tag v0.1.2
+git push origin v0.1.2
+```
+
+That release publishes these tags:
+
+- `ghcr.io/quabug/grok-bot-mcp:v0.1.2`
+- `ghcr.io/quabug/grok-bot-mcp:0.1.2`
+- `ghcr.io/quabug/grok-bot-mcp:latest`
+
+`latest` follows the most recently published release. The image version comes
+from the Git tag; changing `package.json` is not required. The MCP protocol
+server version remains the value in `runtime/src/server.js`.
+The workflow uses `GITHUB_TOKEN` with `packages: write`; no registry password
+secret is needed. To allow anonymous pulls, set the GHCR package visibility
+to **Public** after the first publication.
+
+```bash
+docker pull ghcr.io/quabug/grok-bot-mcp:v0.1.2
+```
+
 ## Environment
 
 | Variable | Default | Purpose |
@@ -288,6 +381,7 @@ Checks Node version, deps, ports `3851`/`3860`/`3861`, MCP `tools/list` (agent t
 | `GROK_BOT_MCP_ROOT` | directory of `start-secure.sh` / `start-stdio.sh` | Repo root (agent-bridge, scripts, secrets) |
 | `GROK_BOT_WORKSPACE` | `/workspace/chatgpt` if present, else `$ROOT/../chatgpt` or `$ROOT/workspace` | Folder scope for workspace tools |
 | `GROK_BOT_MCP_PORT` | `3851` | Loopback MCP HTTP port |
+| `GROK_BOT_MCP_GENERAL_ONLY` | `false` | Set `true` to expose only general tools and skip all agent-bridge initialization |
 | `GROK_BOT_GATEWAY_PORT` | `3860` | OAuth gateway port |
 | `GROK_BOT_MCP_URL` | `http://127.0.0.1:$PORT/mcp` | Upstream URL for stdio bridge |
 | `GROK_BOT_AGENTS_DIR` | `/home/box/agent-data/agents` if present, else `$ROOT/../agent-data/agents` | Agent profiles for `list_agents` |

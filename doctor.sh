@@ -4,6 +4,12 @@
 # Soft warnings (webhook, cloudflared missing when stdio-only, pending outbox) do not fail.
 set -euo pipefail
 
+export GROK_BOT_MCP_GENERAL_ONLY="${GROK_BOT_MCP_GENERAL_ONLY:-false}"
+case "$GROK_BOT_MCP_GENERAL_ONLY" in
+  true|false) ;;
+  *) echo "GROK_BOT_MCP_GENERAL_ONLY must be true or false" >&2; exit 1 ;;
+esac
+
 ROOT_MCP="${GROK_BOT_MCP_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 PORT_MCP="${GROK_BOT_MCP_PORT:-3851}"
 PORT_GW="${GROK_BOT_GATEWAY_PORT:-3860}"
@@ -54,7 +60,9 @@ port_listen() {
   return 1
 }
 
-for p in "$PORT_MCP" "$PORT_GW" "$PORT_NOTIFY"; do
+PORTS=("$PORT_MCP" "$PORT_GW")
+if [[ "$GROK_BOT_MCP_GENERAL_ONLY" == "false" ]]; then PORTS+=("$PORT_NOTIFY"); fi
+for p in "${PORTS[@]}"; do
   if port_listen "$p"; then
     ok "port $p listening"
   else
@@ -109,7 +117,13 @@ if port_listen "$PORT_MCP"; then
     TOOLS_JSON="$(echo "$TOOLS_RESP" | sed -n 's/^data: //p' | head -1)"
   fi
   MISSING=()
-  for t in list_agents message_agent check_replies; do
+  EXPECTED_TOOLS=(current_context read_file run_command)
+  if [[ "$GROK_BOT_MCP_GENERAL_ONLY" == "false" ]]; then
+    EXPECTED_TOOLS+=(list_agents message_agent check_replies)
+  elif echo "$TOOLS_JSON" | grep -qE '"name"[[:space:]]*:[[:space:]]*"(list_agents|message_agent|check_replies)"'; then
+    fail "general-only mode requested but agent tools are exposed; restart MCP with matching mode"
+  fi
+  for t in "${EXPECTED_TOOLS[@]}"; do
     if ! echo "$TOOLS_JSON" | grep -q "\"name\":\"$t\""; then
       # also allow spaced JSON
       if ! echo "$TOOLS_JSON" | grep -q "\"name\": \"$t\""; then
@@ -118,7 +132,7 @@ if port_listen "$PORT_MCP"; then
     fi
   done
   if [[ ${#MISSING[@]} -eq 0 ]]; then
-    ok "tools/list includes list_agents, message_agent, check_replies"
+    ok "tools/list includes ${EXPECTED_TOOLS[*]}"
   else
     fail "tools/list missing: ${MISSING[*]}"
   fi
@@ -169,20 +183,23 @@ else
 fi
 
 # --- Outbox pending ---
-OUTBOX="$ROOT_MCP/agent-bridge/outbox"
-PENDING=0
-if [[ -d "$OUTBOX" ]]; then
-  PENDING="$(find "$OUTBOX" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
-fi
-ok "outbox pending count: $PENDING"
+if [[ "$GROK_BOT_MCP_GENERAL_ONLY" == "false" ]]; then
+  OUTBOX="$ROOT_MCP/agent-bridge/outbox"
+  PENDING=0
+  if [[ -d "$OUTBOX" ]]; then
+    PENDING="$(find "$OUTBOX" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
+  fi
+  ok "outbox pending count: $PENDING"
 
-# --- webhook.url ---
-if [[ -n "${AGENT_BRIDGE_WEBHOOK_URL:-}" ]]; then
-  ok "AGENT_BRIDGE_WEBHOOK_URL is set"
-elif [[ -f "$ROOT_MCP/agent-bridge/webhook.url" ]]; then
-  ok "agent-bridge/webhook.url present"
-else
-  warn "no webhook configured (AGENT_BRIDGE_WEBHOOK_URL or agent-bridge/webhook.url) — parent relies on poll/NOTIFY"
+  # --- webhook.url ---
+  if [[ -n "${AGENT_BRIDGE_WEBHOOK_URL:-}" ]]; then
+    ok "AGENT_BRIDGE_WEBHOOK_URL is set"
+  elif [[ -f "$ROOT_MCP/agent-bridge/webhook.url" ]]; then
+    ok "agent-bridge/webhook.url present"
+  else
+    warn "no webhook configured (AGENT_BRIDGE_WEBHOOK_URL or agent-bridge/webhook.url) — parent relies on poll/NOTIFY"
+  fi
+
 fi
 
 echo

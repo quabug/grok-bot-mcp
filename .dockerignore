@@ -1,0 +1,14 @@
+# Only source files required by the image may enter the build context.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!LICENSE
+!runtime/
+!runtime/package.json
+!runtime/package-lock.json
+!runtime/src/
+!runtime/src/server.js
+!agent-bridge/
+!agent-bridge/package.json
+!agent-bridge/mcp-tools.js

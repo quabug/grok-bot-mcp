@@ -6,6 +6,7 @@
 #   GROK_BOT_WORKSPACE          Folder scope for workspace tools
 #   GROK_BOT_MCP_PORT           Loopback MCP port (default 3851)
 #   GROK_BOT_GATEWAY_PORT       OAuth gateway port (default 3860)
+#   GROK_BOT_MCP_GENERAL_ONLY  true to skip Grok Bot agent features (default false)
 #   GROK_BOT_AGENTS_DIR         Agent profiles dir for agent-bridge
 #   GROK_BOT_SELF_AGENT_ID      This agent's UUID for agent-bridge
 #   GROK_BOT_PUBLIC_BASE_URL    Stable public HTTPS base (no trailing path)
@@ -21,6 +22,12 @@
 #   2) GROK_BOT_PUBLIC_BASE_URL + GROK_BOT_SKIP_QUICK_TUNNEL=1 → no local tunnel
 #   3) else → quick tunnel (*.trycloudflare.com); URL written to secrets/PUBLIC_BASE_URL.txt
 set -euo pipefail
+
+export GROK_BOT_MCP_GENERAL_ONLY="${GROK_BOT_MCP_GENERAL_ONLY:-false}"
+case "$GROK_BOT_MCP_GENERAL_ONLY" in
+  true|false) ;;
+  *) echo "GROK_BOT_MCP_GENERAL_ONLY must be true or false" >&2; exit 1 ;;
+esac
 
 ROOT_MCP="${GROK_BOT_MCP_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 export GROK_BOT_MCP_ROOT="$ROOT_MCP"
@@ -284,12 +291,19 @@ CF_PID=$(cat "$PID_DIR/cloudflared.pid" 2>/dev/null || echo "n/a")
 CLI_PID=$(cat "$PID_DIR/mcp-cli.pid")
 
 # Write STATUS
+MCP_NAME="Grok Bot"
+MCP_ID="grok-bot"
+if [[ "$GROK_BOT_MCP_GENERAL_ONLY" == "true" ]]; then
+  MCP_NAME="Workspace MCP"
+  MCP_ID="workspace-mcp"
+fi
 cat >"$ROOT_MCP/STATUS.txt" << STATUS
-Grok Bot MCP — SECURE (OAuth 2.1)
+${MCP_NAME} — SECURE (OAuth 2.1)
 =================================
 Started: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 Package: chatgpt-local-mcp@1.0.3 (local) behind oauth-gateway (mcp-oauth-server)
-         branded serverInfo name=grok-bot title="Grok Bot"
+         serverInfo name=${MCP_ID} title="${MCP_NAME}"
+General tools only: ${GROK_BOT_MCP_GENERAL_ONLY}
 Root:    ${ROOT_MCP}
 Workspace scope: ${ROOT_SCOPE}
 Tunnel mode: ${TUNNEL_MODE}
@@ -304,7 +318,7 @@ Security model:
   - Loopback / stdio clients: AI_PC_MCP_ALLOW_NO_AUTH + ALLOW_NO_AUTH_LOCAL (no OAuth)
 
 Auth for remote MCP clients (ChatGPT, HTTP agents): OAuth
-  Name: Grok Bot
+  Name: ${MCP_NAME}
   URL:  ${PUBLIC_URL}/mcp
   Auth: OAuth
 

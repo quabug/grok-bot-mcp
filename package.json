@@ -11,7 +11,7 @@
     "start:secure": "bash start-secure.sh",
     "start:stdio": "bash start-stdio.sh",
     "stop:secure": "bash stop-secure.sh",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test test/*.test.js",
     "doctor": "bash doctor.sh"
   },
   "keywords": [
