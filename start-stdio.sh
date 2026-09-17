@@ -45,9 +45,9 @@ if [[ ! -d "$HOME_DIR/node_modules/express" ]]; then
   (cd "$HOME_DIR" && npm install --omit=dev --no-audit --no-fund) >&2
 fi
 
-# Keep branded runtime/src/server.js as source of truth; sync into package copy used by cli.
+# Keep branded runtime/src modules as source of truth; sync into the CLI package copy.
 if [[ -f "$HOME_DIR/src/server.js" && -d "$PKG/src" ]]; then
-  cp -f "$HOME_DIR/src/server.js" "$PKG/src/server.js"
+  cp -f "$HOME_DIR"/src/*.js "$PKG/src/"
 fi
 
 ensure_local_mcp() {

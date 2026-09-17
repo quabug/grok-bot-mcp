@@ -9,6 +9,7 @@
 !runtime/package-lock.json
 !runtime/src/
 !runtime/src/server.js
+!runtime/src/output-schemas.js
 !agent-bridge/
 !agent-bridge/package.json
 !agent-bridge/mcp-tools.js

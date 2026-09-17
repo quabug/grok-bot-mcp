@@ -150,10 +150,10 @@ pkill -f 'cloudflared tunnel run --token' 2>/dev/null || true
 pkill -f 'oauth-gateway/gateway.js' 2>/dev/null || true
 sleep 0.4
 
-# Keep branded runtime/src/server.js as source of truth; sync into package so
+# Keep branded runtime/src modules as source of truth; sync into package so
 # chatgpt-local-mcp's installRuntime copy preserves agent-bridge wiring.
 if [[ -f "$HOME_DIR/src/server.js" && -d "$PKG/src" ]]; then
-  cp -f "$HOME_DIR/src/server.js" "$PKG/src/server.js"
+  cp -f "$HOME_DIR"/src/*.js "$PKG/src/"
 fi
 
 # --- 1) Local MCP: 127.0.0.1 only, NO tunnel ---

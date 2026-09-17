@@ -32,7 +32,10 @@ async function rpc(method, params = {}) {
 
 const initialized = await rpc("initialize");
 assert.equal(initialized.serverInfo.name, "workspace-mcp");
+assert.equal(initialized.protocolVersion, "2025-06-18");
 const { tools } = await rpc("tools/list");
+assert.equal(tools.length, 53);
+for (const tool of tools) assert.equal(tool.outputSchema?.type, "object", tool.name);
 for (const name of ["read_file", "write_file", "run_command", "git_status"]) {
   assert.ok(tools.some(tool => tool.name === name), name);
 }
@@ -44,7 +47,11 @@ const write = await rpc("tools/call", {
   name: "write_file", arguments: { path: "docker-smoke.txt", content: "container workspace is writable" },
 });
 assert.ok(!write.isError, JSON.stringify(write));
+assert.equal(write.structuredContent.success, true);
+assert.deepEqual(write.structuredContent, JSON.parse(write.content[0].text));
 const read = await rpc("tools/call", { name: "read_file", arguments: { path: "docker-smoke.txt" } });
 assert.ok(!read.isError, JSON.stringify(read));
 assert.match(read.content[0].text, /container workspace is writable/);
-console.log("Docker smoke test passed: general tools available, agent tools disabled, workspace writable.");
+assert.equal(read.structuredContent.content, "container workspace is writable");
+assert.deepEqual(read.structuredContent, JSON.parse(read.content[0].text));
+console.log("Docker smoke test passed: general tools available, agent tools disabled, workspace writable, structured results preserved.");

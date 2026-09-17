@@ -42,5 +42,8 @@
   },
   "dependencies": {
     "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0"
   }
 }
