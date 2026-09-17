@@ -8,6 +8,7 @@
  */
 
 import express from "express";
+import { withOutputSchema } from "./output-schemas.js";
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
@@ -99,7 +100,7 @@ const DEFAULT_CWD = path.resolve(
     (fsSync.existsSync("/workspaces/codespaces-blank") ? "/workspaces/codespaces-blank" : process.cwd())
 );
 const COMMAND_TIMEOUT_MS = Number(process.env.AI_PC_MCP_COMMAND_TIMEOUT_MS || 30000);
-const PROTOCOL_VERSION = "2024-11-05";
+const PROTOCOL_VERSION = "2025-06-18";
 
 // Path separator used in AI_PC_MCP_PROTECTED_PATHS is | (pipe).
 // Pipe is illegal in file paths on both Windows and Linux, so it is safe.
@@ -278,9 +279,11 @@ function publicBaseUrl(req) {
 }
 
 function textResult(data) {
-  const text = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+  const text = JSON.stringify(data, null, 2);
   return {
+    // Keep JSON text for clients that do not read structuredContent.
     content: [{ type: "text", text }],
+    structuredContent: JSON.parse(text),
   };
 }
 
@@ -2174,6 +2177,10 @@ const tools = [
 
 // Agent-messaging bridge (list_agents / message_agent / check_replies)
 tools.push(...agentBridgeTools);
+// Fail fast rather than advertise an action with an undocumented result shape.
+for (let index = 0; index < tools.length; index += 1) {
+  tools[index] = withOutputSchema(tools[index]);
+}
 
 async function handleMcpMessage(message, req) {
   const { id, method, params } = message || {};

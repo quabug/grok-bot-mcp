@@ -203,15 +203,41 @@ function ensureNotifyHttp() {
   });
 }
 
+// Kept local so the mailbox bridge remains independently deployable.
+const outputString = { type: "string" };
+const outputBoolean = { type: "boolean" };
+const outputNullableString = { anyOf: [outputString, { type: "null" }] };
+const outputObject = (required, optional = {}, additionalProperties = false) => ({
+  type: "object", properties: { ...required, ...optional },
+  required: Object.keys(required), additionalProperties,
+});
+
 export const agentBridgeTools = [
   {
     name: "list_agents",
+    outputSchema: outputObject({
+      self_id: outputNullableString, agents_dir: outputNullableString,
+      count: { type: "integer" },
+      agents: { type: "array", items: outputObject({
+        id: outputString, name: outputString, description: outputString,
+        serverId: { anyOf: [outputString, { type: "number" }, { type: "null" }] },
+        self: outputBoolean,
+      }) },
+      mailbox: outputString, note: outputString,
+    }, { error: outputString }),
     description:
       "List other Grok Bot agents (and self) available for messaging. Refreshes from agent profiles (GROK_BOT_AGENTS_DIR). Returns id, name, description, serverId, and self flag.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "message_agent",
+    outputSchema: outputObject({
+      ok: { type: "boolean", const: true }, outbox_id: outputString,
+      to_agent_id: outputString, to_name: outputString,
+      status: { type: "string", const: "pending" },
+      queued: { type: "boolean", const: true },
+      webhook_notify_attempted: outputBoolean, hint: outputString, path: outputString,
+    }),
     description:
       "Queue a message to another Grok Bot agent via the mailbox bridge. Provide agent_id (UUID), serverId, or name, plus message text. Returns outbox id; parent agent dispatches with SendToAgent. Optionally fires AGENT_BRIDGE_WEBHOOK_URL / webhook.url for faster notify. Use check_replies later for responses.",
     inputSchema: {
@@ -226,6 +252,18 @@ export const agentBridgeTools = [
   },
   {
     name: "check_replies",
+    outputSchema: outputObject({
+      count: { type: "integer" }, inbox: outputString,
+      messages: {
+        type: "array",
+        // Parent-supplied inbox records may carry additional application metadata.
+        items: outputObject({}, {
+          id: outputString, from_agent_id: outputNullableString,
+          from_name: outputString, message: outputString, created_at: outputString,
+          read: outputBoolean, read_at: outputString, in_reply_to: outputString,
+        }, true),
+      },
+    }),
     description:
       "Fetch replies in the agent-bridge inbox (messages recorded by the parent after teammate responses). Optional since (ISO timestamp) and unread_only. Set mark_read=true to mark fetched messages as read.",
     inputSchema: {

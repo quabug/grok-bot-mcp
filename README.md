@@ -201,6 +201,25 @@ The trace also does not reveal the MCP transport configuration, the server's int
 - **Agent bridge**: `list_agents`, `message_agent`, `check_replies` for teammate messaging (optional webhook for faster outbox notify)
 - **`npm run doctor`**: readiness checks against the live stack
 
+## Structured action results
+
+Every action returned by `tools/list` includes a JSON `outputSchema`: 53 workspace actions in general-only mode, or 56 with the three agent-bridge actions enabled. The runtime advertises MCP protocol version `2025-06-18`, which supports structured tool results.
+
+Successful `tools/call` responses contain the action's result object in `result.structuredContent`. The existing `result.content[0].text` still contains the same object serialized as JSON, so clients that consume the text payload do not need to change their result parsing. Clients must support the advertised protocol version.
+
+Schemas describe the action result, not the surrounding JSON-RPC or MCP envelope. Dates are strings; absent JavaScript values are omitted rather than converted to null. Contracts cover per-file batch errors, managed-process lifecycle fields, all `git_branch` actions, and optional agent metadata. `json_query.result` intentionally accepts arbitrary JSON, and parent-supplied inbox records retain custom metadata.
+
+Thrown tool errors retain the standard `isError: true` text response without fabricated success-shaped data. A completed command with a nonzero exit code still returns its normal structured command result with `success: false`.
+
+Workspace contracts live in `runtime/src/output-schemas.js`; agent contracts are defined alongside their tools in `agent-bridge/mcp-tools.js`. Registration fails if an action has no object output schema. When adding or changing an action, update its schema and contract tests together:
+
+```bash
+npm ci --prefix runtime --no-audit --no-fund
+npm test
+```
+
+The tests compile every advertised schema and validate real action responses, including partial results and errors. Files, repositories, managed processes, and agent mailboxes are isolated fixtures; browser and clipboard operations use test doubles. Ajv is a development-only dependency, not part of the production runtime.
+
 ## Requirements
 
 - Node.js 20+
